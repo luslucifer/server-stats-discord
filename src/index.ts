@@ -38,9 +38,9 @@ client.once("ready", async () => {
     // Disk Usage and Storage Graphs
     const disk = fs[0]; // Assuming first disk is the main one
     const diskUsagePercentage = ((disk.used / disk.size) * 100).toFixed(2);
-    const totalDiskSize = (disk.size / 1024 / 1024 / 1024).toFixed(2); // in GB
-    const usedDiskSpace = (disk.used / 1024 / 1024 / 1024).toFixed(2); // in GB
-    const freeDiskSpace = ((disk.size - disk.used) / 1024 / 1024 / 1024).toFixed(2); // in GB
+    const totalDiskSizeTB = (disk.size / 1024 / 1024 / 1024 / 1024).toFixed(2); // in TB
+    const usedDiskSpaceTB = (disk.used / 1024 / 1024 / 1024 / 1024).toFixed(2); // in TB
+    const freeDiskSpaceTB = ((disk.size - disk.used) / 1024 / 1024 / 1024 / 1024).toFixed(2); // in TB
 
     // Graphs for Storage usage and free space
     const usedStorageGraph = bar((disk.used / disk.size) * 100); // Graph for used storage
@@ -56,9 +56,9 @@ client.once("ready", async () => {
         { name: "📥 Download Speed", value: `${downloadSpeedMB} MB/s`, inline: true },  // Updated to MB/s
         { name: "📤 Upload Speed", value: `${uploadSpeedMB} MB/s`, inline: true },  // Updated to MB/s
         { name: "💾 Disk Usage", value: `${diskUsagePercentage}% ${bar(parseFloat(diskUsagePercentage))}`, inline: false },
-        { name: "🖴 Total Storage", value: `${totalDiskSize} GB`, inline: true },
-        { name: "📂 Used Storage", value: `${usedDiskSpace} GB ${usedStorageGraph}`, inline: true },
-        { name: "📥 Free Storage", value: `${freeDiskSpace} GB ${freeStorageGraph}`, inline: true }
+        { name: "🖴 Total Storage", value: `${totalDiskSizeTB} TB`, inline: true },
+        { name: "📂 Used Storage", value: `${usedDiskSpaceTB} TB ${usedStorageGraph}`, inline: true },
+        { name: "📥 Free Storage", value: `${freeDiskSpaceTB} TB ${freeStorageGraph}`, inline: true }
       )
       .setTimestamp()
       .setFooter({ text: "System Monitor Bot", iconURL: client.user?.displayAvatarURL() || undefined });
