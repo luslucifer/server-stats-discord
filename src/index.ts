@@ -3,14 +3,25 @@ import si from "systeminformation";
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-// Replace with your bot token and channel ID
 const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID || '';
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
 });
 
-let lastMessage: Message | null = null; // Store the last message
+let lastMessage: Message | null = null;
+
+// Helper function to format bytes to human-readable sizes
+const formatSize = (bytes: number): string => {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  if (bytes === 0) return '0 B';
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
+};
+
+// Text-based bar graph generator
+const bar = (value: number) => 
+  '█'.repeat(Math.round(value / 10)) + '░'.repeat(10 - Math.round(value / 10));
 
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user?.tag}`);
@@ -21,55 +32,86 @@ client.once("ready", async () => {
   }
 
   setInterval(async () => {
-    const cpu = await si.currentLoad();
-    const mem = await si.mem();
-    const net1 = await si.networkStats();
-    const fs = await si.fsSize(); // Get disk stats
-    await new Promise((r) => setTimeout(r, 2000)); // Wait 2 sec
-    const net2 = await si.networkStats();
+    try {
+      // System stats collection
+      const [cpu, mem, net1, fs] = await Promise.all([
+        si.currentLoad(),
+        si.mem(),
+        si.networkStats(),
+        si.fsSize(),
+      ]);
 
-    // Convert speeds to MB/s
-    const downloadSpeedMB = ((net2[0].rx_bytes - net1[0].rx_bytes) / 1024 / 1024).toFixed(2);  // Convert to MB/s
-    const uploadSpeedMB = ((net2[0].tx_bytes - net1[0].tx_bytes) / 1024 / 1024).toFixed(2);  // Convert to MB/s
+      // Network calculation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const net2 = await si.networkStats();
+      const download = (net2[0].rx_bytes - net1[0].rx_bytes) / 1024 / 1024;
+      const upload = (net2[0].tx_bytes - net1[0].tx_bytes) / 1024 / 1024;
 
-    // Create a text-based graph for CPU, RAM, and Disk usage
-    const bar = (value: number) => "█".repeat(Math.round(value / 10)) + "░".repeat(10 - Math.round(value / 10));
+      // CPU Cores Information
+      const coresInfo = cpu.cpus.map((core, i) => 
+        `Core ${i + 1}: ${core.load.toFixed(1)}% ${bar(core.load)}`
+      ).join('\n');
 
-    // Disk Usage and Storage Graphs
-    const disk = fs[0]; // Assuming first disk is the main one
-    const diskUsagePercentage = ((disk.used / disk.size) * 100).toFixed(2);
-    const totalDiskSizeTB = (disk.size / 1024 / 1024 / 1024 / 1024).toFixed(2); // in TB
-    const usedDiskSpaceTB = (disk.used / 1024 / 1024 / 1024 / 1024).toFixed(2); // in TB
-    const freeDiskSpaceTB = ((disk.size - disk.used) / 1024 / 1024 / 1024 / 1024).toFixed(2); // in TB
+      // Detailed Disk Information
+      const disksInfo = fs.map(disk => {
+        const usage = (disk.used / disk.size) * 100;
+        return [
+          `**${disk.mount}** (${disk.fs})`,
+          `${usage.toFixed(1)}% ${bar(usage)}`,
+          `Total: ${formatSize(disk.size)} | Used: ${formatSize(disk.used)}`,
+          `Free: ${formatSize(disk.size - disk.used)}`
+        ].join('\n');
+      }).join('\n\n');
 
-    // Graphs for Storage usage and free space
-    const usedStorageGraph = bar((disk.used / disk.size) * 100); // Graph for used storage
-    const freeStorageGraph = bar(((disk.size - disk.used) / disk.size) * 100); // Graph for free storage
+      // RAM Calculation
+      const ramUsage = (mem.used / mem.total) * 100;
 
-    const embed = new EmbedBuilder()
-      .setColor(0x0099ff)
-      .setTitle("📊 System Status")
-      .setDescription("Real-time system stats update")
-      .addFields(
-        { name: "🖥 CPU Usage", value: `${cpu.currentLoad.toFixed(2)}% ${bar(cpu.currentLoad)}`, inline: false },
-        { name: "🧠 RAM Usage", value: `${((mem.used / mem.total) * 100).toFixed(2)}% ${bar((mem.used / mem.total) * 100)}`, inline: false },
-        { name: "📥 Download Speed", value: `${downloadSpeedMB} MB/s`, inline: true },  // Updated to MB/s
-        { name: "📤 Upload Speed", value: `${uploadSpeedMB} MB/s`, inline: true },  // Updated to MB/s
-        { name: "💾 Disk Usage", value: `${diskUsagePercentage}% ${bar(parseFloat(diskUsagePercentage))}`, inline: false },
-        { name: "🖴 Total Storage", value: `${totalDiskSizeTB} TB`, inline: true },
-        { name: "📂 Used Storage", value: `${usedDiskSpaceTB} TB ${usedStorageGraph}`, inline: true },
-        { name: "📥 Free Storage", value: `${freeDiskSpaceTB} TB ${freeStorageGraph}`, inline: true }
-      )
-      .setTimestamp()
-      .setFooter({ text: "System Monitor Bot", iconURL: client.user?.displayAvatarURL() || undefined });
+      // Create embed
+      const embed = new EmbedBuilder()
+        .setColor(0x0099ff)
+        .setTitle("📊 Detailed System Status")
+        .setDescription("Real-time system monitoring with detailed metrics")
+        .addFields(
+          { 
+            name: "🖥 CPU Overview", 
+            value: `${cpu.currentLoad.toFixed(1)}% ${bar(cpu.currentLoad)}`,
+            inline: false
+          },
+          { 
+            name: `⚙️ CPU Cores (${cpu.cpus.length})`,
+            value: coresInfo,
+            inline: false
+          },
+          { 
+            name: "🧠 RAM Usage", 
+            value: `${ramUsage.toFixed(1)}% ${bar(ramUsage)}\n` +
+                   `Total: ${formatSize(mem.total)} | Used: ${formatSize(mem.used)}`,
+            inline: false
+          },
+          { 
+            name: "🌐 Network", 
+            value: `📥 ${download.toFixed(2)} MB/s\n📤 ${upload.toFixed(2)} MB/s`,
+            inline: true
+          },
+          { 
+            name: `💾 Storage (${fs.length} volumes)`, 
+            value: disksInfo,
+            inline: false
+          }
+        )
+        .setTimestamp()
+        .setFooter({ text: "System Monitor Bot", iconURL: client.user?.displayAvatarURL() || undefined });
 
-    // If message exists, edit it. Otherwise, send a new message.
-    if (lastMessage) {
-      lastMessage.edit({ embeds: [embed] }).catch(console.error);
-    } else {
-      lastMessage = await channel.send({ embeds: [embed] });
+      // Update message
+      if (lastMessage) {
+        await lastMessage.edit({ embeds: [embed] });
+      } else {
+        lastMessage = await channel.send({ embeds: [embed] });
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
     }
-  }, 1000); // Updates every 1 second
+  }, 5000); // Update every 5 seconds
 });
 
 client.login(TOKEN);
